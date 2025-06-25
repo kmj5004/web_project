@@ -1,5 +1,8 @@
 import { GenerativeModel, GoogleGenerativeAI } from '@google/generative-ai';
 
+// Google Gemini AI API를 사용한 AI 상담 서비스
+// 실제 환경에서는 Google AI Studio에서 API 키를 발급받아 사용해야 합니다.
+
 class GeminiService {
   private genAI: GoogleGenerativeAI | null = null;
   private model: GenerativeModel | null = null;
@@ -182,6 +185,110 @@ ${context ? `상황: ${context}` : ''}
     } catch (error) {
       console.error('Chat suggestion 생성 에러:', error);
       return `${carInfo.title}에 관심을 가져주셔서 감사합니다. 차량 상태는 매우 양호하며, 직접 확인해보시면 만족하실 것 같습니다. 언제든 연락주세요!`;
+    }
+  }
+
+  async generateNaturalResponse(carInfo: any, userMessage: string, conversationHistory: any[] = []): Promise<string> {
+    if (!this.isInitialized || !this.model) {
+      return `${carInfo.title}에 관심을 가져주셔서 감사합니다. 차량에 대해 궁금한 점이 있으시면 언제든 문의해주세요!`;
+    }
+
+    try {
+      // 대화 히스토리에서 컨텍스트 추출
+      const conversationContext = conversationHistory.length > 0 
+        ? conversationHistory.map(msg => `${msg.senderId === 'user' ? '구매자' : '판매자'}: ${msg.message}`).join('\n')
+        : '';
+
+      // 사용자 메시지 분석을 위한 키워드 추출
+      const lowerMessage = userMessage.toLowerCase();
+      const isQuestion = userMessage.includes('?') || userMessage.includes('요') || userMessage.includes('까');
+      const isGreeting = lowerMessage.includes('안녕') || lowerMessage.includes('반갑') || lowerMessage.includes('처음');
+      const isPriceInquiry = lowerMessage.includes('가격') || lowerMessage.includes('얼마') || lowerMessage.includes('시세');
+      const isConditionInquiry = lowerMessage.includes('상태') || lowerMessage.includes('깨끗') || lowerMessage.includes('사고');
+      const isTestDrive = lowerMessage.includes('시승') || lowerMessage.includes('타보') || lowerMessage.includes('운전');
+      const isLocation = lowerMessage.includes('위치') || lowerMessage.includes('어디') || lowerMessage.includes('장소');
+
+      const prompt = `
+당신은 중고차 판매자입니다. 구매자와의 자연스러운 대화를 이어가세요.
+
+차량 정보:
+- 제목: ${carInfo.title}
+- 가격: ${carInfo.price}만원
+- 연식: ${carInfo.year}년
+- 주행거리: ${carInfo.mileage}km
+- 위치: ${carInfo.location}
+
+${conversationContext ? `이전 대화:\n${conversationContext}\n` : ''}
+
+구매자 메시지: ${userMessage}
+
+메시지 분석:
+- 질문 여부: ${isQuestion ? '예' : '아니오'}
+- 인사말: ${isGreeting ? '예' : '아니오'}
+- 가격 문의: ${isPriceInquiry ? '예' : '아니오'}
+- 상태 문의: ${isConditionInquiry ? '예' : '아니오'}
+- 시승 문의: ${isTestDrive ? '예' : '아니오'}
+- 위치 문의: ${isLocation ? '예' : '아니오'}
+
+다음 사항을 고려하여 자연스럽고 친근하게 답변해주세요:
+- 대화 맥락을 고려한 연속성 있는 답변
+- 차량에 대한 전문적이면서도 친근한 설명
+- 구매자의 관심사에 맞는 맞춤형 정보 제공
+- 이모티콘을 적절히 사용하여 친근감 표현 (하지만 과도하지 않게)
+- 질문이 있으면 자연스럽게 물어보기
+- 답변은 1-3문장 정도로 간결하게
+- 다양한 응답 패턴 사용 (단조롭지 않게)
+- 구체적인 정보 제공 (가격, 위치, 시승 가능 여부 등)
+
+판매자로서의 답변:
+`;
+
+      const result = await this.model.generateContent(prompt);
+      const response = result.response;
+      return response.text();
+    } catch (error) {
+      console.error('Natural response 생성 에러:', error);
+      
+      // 에러 시 다양한 기본 응답 중에서 선택 (메시지 내용에 따라)
+      const lowerMessage = userMessage.toLowerCase();
+      
+      if (lowerMessage.includes('가격') || lowerMessage.includes('얼마')) {
+        const priceResponses = [
+          `${carInfo.title}의 가격은 ${carInfo.price}만원입니다. 시세 대비 합리적인 가격으로 설정했어요! 😊`,
+          `${carInfo.price}만원으로 설정했는데, 차량 상태를 보시면 정말 좋은 가격이라고 생각하실 거예요.`,
+          `현재 ${carInfo.price}만원에 판매 중입니다. 직접 확인해보시면 가격이 합리적이라는 걸 아실 거예요! 👍`
+        ];
+        return priceResponses[Math.floor(Math.random() * priceResponses.length)];
+      }
+      
+      if (lowerMessage.includes('상태') || lowerMessage.includes('깨끗')) {
+        const conditionResponses = [
+          `${carInfo.title}는 정말 깨끗하고 상태가 좋아요! 직접 확인해보시면 만족하실 거예요.`,
+          `차량 상태는 매우 양호합니다. 사고 이력도 없고 정기 정비도 잘 되어 있어요! 😄`,
+          `상태가 정말 좋은 차량이에요. 외관도 깨끗하고 내부도 깔끔하게 관리되어 있습니다.`
+        ];
+        return conditionResponses[Math.floor(Math.random() * conditionResponses.length)];
+      }
+      
+      if (lowerMessage.includes('시승') || lowerMessage.includes('타보')) {
+        const testDriveResponses = [
+          `네, 시승 가능합니다! ${carInfo.location}에서 언제든 가능해요. 언제 오실 수 있으신가요?`,
+          `당연히 시승 가능해요! 직접 타보시면 차량이 얼마나 좋은지 아실 거예요. 😊`,
+          `시승은 ${carInfo.location}에서 가능합니다. 편하실 때 연락주세요!`
+        ];
+        return testDriveResponses[Math.floor(Math.random() * testDriveResponses.length)];
+      }
+      
+      // 기본 응답들
+      const fallbackResponses = [
+        `${carInfo.title}에 관심을 가져주셔서 감사합니다! 차량에 대해 더 궁금한 점이 있으시면 언제든 말씀해주세요. 😊`,
+        `좋은 질문이네요! ${carInfo.title}에 대해 더 자세히 알고 싶으신 부분이 있으시면 편하게 물어보세요.`,
+        `감사합니다! ${carInfo.title}는 정말 좋은 차량이에요. 궁금한 점이 있으시면 언제든 문의해주세요! 👍`,
+        `${carInfo.title}에 대한 문의 감사합니다. 차량에 대해 더 구체적으로 궁금한 점이 있으시면 알려주세요.`,
+        `좋은 선택이에요! ${carInfo.title}에 대해 어떤 부분이 궁금하신지 더 자세히 말씀해주시면 도움드릴게요. 😄`
+      ];
+      
+      return fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
     }
   }
 

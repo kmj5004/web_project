@@ -4,18 +4,28 @@ import { additionalCars } from '../data/additionalCars';
 import { jdmCars } from '../data/jdmCars';
 import { muscleCars } from '../data/muscleCars';
 
+// 차량 데이터 관리 훅 - 차량 목록, 필터링, CRUD 작업 담당
 export const useCars = () => {
+  // 필터링된 차량 목록 상태 (검색, 필터 적용된 결과)
   const [cars, setCars] = useState<Car[]>([]);
+  
+  // 전체 차량 목록 상태 (모든 차량 데이터)
   const [allCars, setAllCars] = useState<Car[]>([]);
+  
+  // 로딩 상태 관리
   const [loading, setLoading] = useState(true);
 
+  // 컴포넌트 마운트 시 차량 데이터 초기화
   useEffect(() => {
+    // 로컬스토리지에서 저장된 차량 데이터 확인
     const storedCars = localStorage.getItem('cars');
     if (storedCars) {
+      // 저장된 데이터가 있으면 복원
       const parsedCars = JSON.parse(storedCars);
       setCars(parsedCars);
       setAllCars(parsedCars);
     } else {
+      // 저장된 데이터가 없으면 샘플 데이터 생성
       
       const sampleCars: Car[] = [
         {
@@ -1080,7 +1090,9 @@ export const useCars = () => {
     setLoading(false);
   }, []);
 
+  // 새로운 차량 추가 함수
   const addCar = (carData: Omit<Car, 'id' | 'createdAt' | 'updatedAt'>) => {
+    // 새로운 차량 객체 생성 (ID, 생성일시, 수정일시 자동 생성)
     const newCar: Car = {
       ...carData,
       id: Date.now().toString(),
@@ -1088,13 +1100,18 @@ export const useCars = () => {
       updatedAt: new Date().toISOString(),
     };
 
+    // 전체 차량 목록에 새 차량 추가
     const updatedCars = [...allCars, newCar];
     setCars(updatedCars);
     setAllCars(updatedCars);
+    
+    // 로컬스토리지에 업데이트된 데이터 저장
     localStorage.setItem('cars', JSON.stringify(updatedCars));
   };
 
+  // 차량 정보 수정 함수
   const updateCar = (id: string, updates: Partial<Omit<Car, 'id' | 'createdAt'>>) => {
+    // 해당 ID의 차량을 찾아서 정보 업데이트
     const updatedCars = allCars.map(car => 
       car.id === id 
         ? { ...car, ...updates, updatedAt: new Date().toISOString() }
@@ -1102,21 +1119,28 @@ export const useCars = () => {
     );
     setCars(updatedCars);
     setAllCars(updatedCars);
+    
+    // 로컬스토리지에 업데이트된 데이터 저장
     localStorage.setItem('cars', JSON.stringify(updatedCars));
   };
 
+  // 차량 삭제 함수
   const deleteCar = (id: string) => {
+    // 해당 ID의 차량을 제외한 목록 생성
     const updatedCars = allCars.filter(car => car.id !== id);
     setCars(updatedCars);
     setAllCars(updatedCars);
+    
+    // 로컬스토리지에 업데이트된 데이터 저장
     localStorage.setItem('cars', JSON.stringify(updatedCars));
   };
 
+  // ID로 차량 조회 함수
   const getCarById = (id: string): Car | undefined => {
     return allCars.find(car => car.id === id);
   };
 
-  
+  // 차량 필터링 함수 - 검색어, 브랜드, 가격, 연식, 연료, 변속기, 주행거리로 필터링
   const getFilteredCars = (filters?: {
     searchTerm?: string;
     brand?: string;

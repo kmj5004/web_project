@@ -1,15 +1,21 @@
 import { useState, useEffect } from 'react';
 import { Post, Comment } from '../types';
 
+// 커뮤니티 관련 상태 관리 훅 - 게시글, 댓글 관리
 export const useCommunity = () => {
+  // 게시글 목록 상태
   const [posts, setPosts] = useState<Post[]>([]);
+  
+  // 댓글 목록 상태
   const [comments, setComments] = useState<Comment[]>([]);
+  
+  // 로딩 상태 관리
   const [loading, setLoading] = useState(true);
 
+  // 컴포넌트 마운트 시 로컬스토리지에서 커뮤니티 데이터 복원
   useEffect(() => {
-    const storedPosts = localStorage.getItem('posts');
-    const storedComments = localStorage.getItem('comments');
-    
+    // 저장된 게시글 데이터 복원
+    const storedPosts = localStorage.getItem('communityPosts');
     if (storedPosts) {
       setPosts(JSON.parse(storedPosts));
     } else {
@@ -82,9 +88,11 @@ export const useCommunity = () => {
       ];
 
       setPosts(samplePosts);
-      localStorage.setItem('posts', JSON.stringify(samplePosts));
+      localStorage.setItem('communityPosts', JSON.stringify(samplePosts));
     }
 
+    // 저장된 댓글 데이터 복원
+    const storedComments = localStorage.getItem('communityComments');
     if (storedComments) {
       setComments(JSON.parse(storedComments));
     } else {
@@ -125,15 +133,27 @@ export const useCommunity = () => {
       ];
 
       setComments(sampleComments);
-      localStorage.setItem('comments', JSON.stringify(sampleComments));
+      localStorage.setItem('communityComments', JSON.stringify(sampleComments));
     }
 
     setLoading(false);
   }, []);
 
-  const addPost = (post: Omit<Post, 'id' | 'createdAt' | 'updatedAt' | 'likes' | 'likedBy' | 'views'>) => {
+  // 게시글 데이터가 변경될 때마다 로컬스토리지에 저장
+  useEffect(() => {
+    localStorage.setItem('communityPosts', JSON.stringify(posts));
+  }, [posts]);
+
+  // 댓글 데이터가 변경될 때마다 로컬스토리지에 저장
+  useEffect(() => {
+    localStorage.setItem('communityComments', JSON.stringify(comments));
+  }, [comments]);
+
+  // 새 게시글 작성 함수
+  const addPost = (postData: Omit<Post, 'id' | 'createdAt' | 'updatedAt' | 'likes' | 'likedBy' | 'views'>) => {
+    // 새 게시글 객체 생성
     const newPost: Post = {
-      ...post,
+      ...postData,
       id: Date.now().toString(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -141,28 +161,29 @@ export const useCommunity = () => {
       likedBy: [],
       views: 0,
     };
-    const updatedPosts = [newPost, ...posts];
-    setPosts(updatedPosts);
-    localStorage.setItem('posts', JSON.stringify(updatedPosts));
-    return newPost;
+
+    setPosts(prev => [newPost, ...prev]);
   };
 
-  const addComment = (comment: Omit<Comment, 'id' | 'createdAt' | 'likes' | 'likedBy'>) => {
-    const newComment: Comment = {
-      ...comment,
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString(),
-      likes: 0,
-      likedBy: [],
-    };
-    const updatedComments = [...comments, newComment];
-    setComments(updatedComments);
-    localStorage.setItem('comments', JSON.stringify(updatedComments));
-    return newComment;
+  // 게시글 수정 함수
+  const updatePost = (id: string, updates: Partial<Omit<Post, 'id' | 'createdAt' | 'likes' | 'likedBy' | 'views'>>) => {
+    setPosts(prev => prev.map(post => 
+      post.id === id 
+        ? { ...post, ...updates, updatedAt: new Date().toISOString() }
+        : post
+    ));
   };
 
+  // 게시글 삭제 함수
+  const deletePost = (id: string) => {
+    setPosts(prev => prev.filter(post => post.id !== id));
+    // 해당 게시글의 댓글도 함께 삭제
+    setComments(prev => prev.filter(comment => comment.postId !== id));
+  };
+
+  // 게시글 좋아요/취소 함수
   const likePost = (postId: string, userId: string) => {
-    const updatedPosts = posts.map(post => {
+    setPosts(prev => prev.map(post => {
       if (post.id === postId) {
         const isLiked = post.likedBy.includes(userId);
         return {
@@ -170,17 +191,54 @@ export const useCommunity = () => {
           likes: isLiked ? post.likes - 1 : post.likes + 1,
           likedBy: isLiked 
             ? post.likedBy.filter(id => id !== userId)
-            : [...post.likedBy, userId]
+            : [...post.likedBy, userId],
         };
       }
       return post;
-    });
-    setPosts(updatedPosts);
-    localStorage.setItem('posts', JSON.stringify(updatedPosts));
+    }));
   };
 
+  // 게시글 조회수 증가 함수
+  const incrementViews = (postId: string) => {
+    setPosts(prev => prev.map(post => 
+      post.id === postId 
+        ? { ...post, views: post.views + 1 }
+        : post
+    ));
+  };
+
+  // 새 댓글 작성 함수
+  const addComment = (commentData: Omit<Comment, 'id' | 'createdAt' | 'updatedAt' | 'likes' | 'likedBy'>) => {
+    // 새 댓글 객체 생성
+    const newComment: Comment = {
+      ...commentData,
+      id: Date.now().toString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      likes: 0,
+      likedBy: [],
+    };
+
+    setComments(prev => [...prev, newComment]);
+  };
+
+  // 댓글 수정 함수
+  const updateComment = (id: string, updates: Partial<Omit<Comment, 'id' | 'createdAt' | 'likes' | 'likedBy'>>) => {
+    setComments(prev => prev.map(comment => 
+      comment.id === id 
+        ? { ...comment, ...updates, updatedAt: new Date().toISOString() }
+        : comment
+    ));
+  };
+
+  // 댓글 삭제 함수
+  const deleteComment = (id: string) => {
+    setComments(prev => prev.filter(comment => comment.id !== id));
+  };
+
+  // 댓글 좋아요/취소 함수
   const likeComment = (commentId: string, userId: string) => {
-    const updatedComments = comments.map(comment => {
+    setComments(prev => prev.map(comment => {
       if (comment.id === commentId) {
         const isLiked = comment.likedBy.includes(userId);
         return {
@@ -188,29 +246,18 @@ export const useCommunity = () => {
           likes: isLiked ? comment.likes - 1 : comment.likes + 1,
           likedBy: isLiked 
             ? comment.likedBy.filter(id => id !== userId)
-            : [...comment.likedBy, userId]
+            : [...comment.likedBy, userId],
         };
       }
       return comment;
-    });
-    setComments(updatedComments);
-    localStorage.setItem('comments', JSON.stringify(updatedComments));
+    }));
   };
 
-  const incrementViews = (postId: string) => {
-    const updatedPosts = posts.map(post => 
-      post.id === postId ? { ...post, views: post.views + 1 } : post
-    );
-    setPosts(updatedPosts);
-    localStorage.setItem('posts', JSON.stringify(updatedPosts));
-  };
-
-  const getPostById = (id: string) => {
-    return posts.find(post => post.id === id);
-  };
-
-  const getCommentsByPostId = (postId: string) => {
-    return comments.filter(comment => comment.postId === postId);
+  // 특정 게시글의 댓글 목록 조회 함수
+  const getCommentsByPostId = (postId: string): Comment[] => {
+    return comments
+      .filter(comment => comment.postId === postId)
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   };
 
   return {
@@ -218,11 +265,14 @@ export const useCommunity = () => {
     comments,
     loading,
     addPost,
-    addComment,
+    updatePost,
+    deletePost,
     likePost,
-    likeComment,
     incrementViews,
-    getPostById,
+    addComment,
+    updateComment,
+    deleteComment,
+    likeComment,
     getCommentsByPostId,
   };
 };

@@ -5,36 +5,51 @@ import { useChat } from '../hooks/useChat';
 import { useAuth } from '../hooks/useAuth';
 import { geminiService } from '../services/geminiService';
 
-
+// AI 봇 메시지 타입 정의
 interface BotMessage {
   id: string;
-  type: 'user' | 'bot'; 
-  content: string;
-  timestamp: Date;
+  type: 'user' | 'bot'; // 메시지 발신자 타입 (사용자 또는 봇)
+  content: string; // 메시지 내용
+  timestamp: Date; // 메시지 전송 시간
 }
 
-
+// 채팅 메시지 타입 정의
 interface ChatMessage {
   id: string;
-  senderId: string;
-  receiverId: string;
-  message: string;
-  timestamp: string; 
-  carId?: string; 
+  senderId: string; // 발신자 ID
+  receiverId: string; // 수신자 ID
+  message: string; // 메시지 내용
+  timestamp: string; // 메시지 전송 시간
+  carId?: string; // 관련 차량 ID
+  read: boolean;
 }
 
 const ChatPage: React.FC = () => {
+  // 차량 데이터 훅 사용
   const { cars } = useCars();
+  
+  // 인증 훅 사용 (현재 로그인한 사용자 정보)
   const { user } = useAuth();
-  const { chatRooms, getUserChatRooms, getMessagesByRoom, sendMessage, createChatRoom } = useChat();
+  
+  // 채팅 훅 사용 (채팅방, 메시지 관리)
+  const { chatRooms, messages, getUserChatRooms, getMessagesByRoom, sendMessage, createChatRoom } = useChat();
 
+  // 활성 탭 상태 관리 (AI 상담 또는 판매자 채팅)
   const [activeTab, setActiveTab] = useState<'bot' | 'seller'>('bot');
+  
+  // 선택된 채팅방 ID 상태
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
+  
+  // 입력 메시지 상태
   const [inputValue, setInputValue] = useState('');
+  
+  // 타이핑 중 상태 (AI 응답 대기 중)
   const [isTyping, setIsTyping] = useState(false);
+  
+  // 메시지 목록 끝을 참조하는 ref (자동 스크롤용)
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  
+  // AI 봇과의 대화 메시지 상태
   const [botMessages, setBotMessages] = useState<BotMessage[]>([
     {
       id: '1',
@@ -44,20 +59,43 @@ const ChatPage: React.FC = () => {
     }
   ]);
 
-  
+  // 현재 채팅방의 메시지 상태 (실시간 업데이트용)
+  const [currentRoomMessages, setCurrentRoomMessages] = useState<ChatMessage[]>([]);
+
+  // AI 자동 응답 토글 상태
+  const [aiAutoResponse, setAiAutoResponse] = useState(true);
+
+  // 현재 사용자의 채팅방 목록
   const userChatRooms = user ? getUserChatRooms(user.id) : [];
 
-  
+  // 메시지 목록 끝으로 스크롤하는 함수
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  
+  // 메시지가 추가될 때마다 자동 스크롤
   useEffect(() => {
     scrollToBottom();
   }, [botMessages, selectedRoom]);
 
-  
+  // 판매자 채팅 메시지가 변경될 때마다 스크롤
+  useEffect(() => {
+    if (selectedRoom && activeTab === 'seller') {
+      const messages = getMessagesByRoom(selectedRoom);
+      if (messages.length > 0) {
+        scrollToBottom();
+      }
+    }
+  }, [selectedRoom, activeTab, messages, isTyping]);
+
+  // selectedRoom이 변경될 때마다 해당 채팅방의 메시지를 로컬 상태에 저장
+  useEffect(() => {
+    if (selectedRoom && activeTab === 'seller') {
+      const messages = getMessagesByRoom(selectedRoom);
+      setCurrentRoomMessages(messages);
+    }
+  }, [selectedRoom, activeTab, messages]);
+
   useEffect(() => {
     console.log('ChatPage 마운트됨');
     const status = geminiService.getStatus();
@@ -70,7 +108,6 @@ const ChatPage: React.FC = () => {
     });
   }, []);
 
-  
   const handleBotMessage = async () => {
     const trimmedInput = inputValue.trim();
     if (!trimmedInput) {
@@ -132,7 +169,6 @@ const ChatPage: React.FC = () => {
     }
   };
 
-  
   const handleSellerMessage = async () => {
     const trimmedInput = inputValue.trim();
     if (!trimmedInput || !selectedRoom || !user) {
@@ -150,39 +186,85 @@ const ChatPage: React.FC = () => {
       return;
     }
 
-    
+    // 수신자 ID 결정 (현재 사용자가 구매자면 판매자에게, 판매자면 구매자에게)
     const receiverId = room.buyerId === user.id ? room.sellerId : room.buyerId;
     const carInfo = cars.find(c => c.id === room.carId);
 
-    
+    // 사용자 메시지 전송
     sendMessage(selectedRoom, user.id, receiverId, trimmedInput, room.carId);
+    // 로컬 상태 즉시 업데이트
+    const newMessage: ChatMessage = {
+      id: Date.now().toString(),
+      carId: room.carId,
+      senderId: user.id,
+      receiverId: receiverId,
+      message: trimmedInput,
+      timestamp: new Date().toISOString(),
+      read: false,
+    };
+    setCurrentRoomMessages(prev => [...prev, newMessage]);
     setInputValue(''); 
     scrollToBottom(); 
 
-    setIsTyping(true); 
+    // AI 자동 응답이 켜져있을 때만 응답 생성
+    if (aiAutoResponse) {
+      setIsTyping(true); 
 
-    try {
-      const aiResponse = await geminiService.generateChatSuggestion(
+      try {
+        // 대화 맥락을 고려한 더 자연스러운 응답 생성
+        const aiResponse = await geminiService.generateNaturalResponse(
           carInfo || { title: "선택된 차량", price: "알 수 없음", year: "알 수 없음", mileage: "알 수 없음", location: "알 수 없음" },
-          trimmedInput
-      );
+          trimmedInput,
+          currentRoomMessages.slice(-3) // 최근 3개 메시지를 컨텍스트로 사용
+        );
 
-      
-      
-      sendMessage(selectedRoom, receiverId, user.id, aiResponse, room.carId); 
-      setIsTyping(false); 
-      scrollToBottom(); 
-      console.log('AI 자동 응답 완료 (상대방 메시지로 표시):', aiResponse.substring(0, 50) + '...');
+        // 약간의 지연을 두고 응답 (자연스러운 타이핑 효과)
+        const delay = 1500 + Math.random() * 2000; // 1.5~3.5초 랜덤 지연
+        
+        setTimeout(() => {
+          // AI 응답을 상대방 메시지로 표시
+          sendMessage(selectedRoom, receiverId, user.id, aiResponse, room.carId); 
+          // AI 응답도 로컬 상태에 즉시 추가
+          const aiMessage: ChatMessage = {
+            id: (Date.now() + 1).toString(),
+            carId: room.carId,
+            senderId: receiverId,
+            receiverId: user.id,
+            message: aiResponse,
+            timestamp: new Date().toISOString(),
+            read: false,
+          };
+          setCurrentRoomMessages(prev => [...prev, aiMessage]);
+          setIsTyping(false); 
+          scrollToBottom(); 
+          console.log('AI 자연스러운 응답 완료:', aiResponse.substring(0, 50) + '...');
+        }, delay);
 
-    } catch (error) {
-      console.error('판매자 채팅 AI 자동 응답 생성 에러:', error);
-      setIsTyping(false); 
-      
-      
+      } catch (error) {
+        console.error('판매자 채팅 AI 응답 생성 에러:', error);
+        setIsTyping(false); 
+        
+        // 에러 시 기본 응답
+        setTimeout(() => {
+          const defaultResponse = `${carInfo?.title || '차량'}에 관심을 가져주셔서 감사합니다. 더 자세한 정보가 필요하시면 언제든 말씀해주세요!`;
+          
+          sendMessage(selectedRoom, receiverId, user.id, defaultResponse, room.carId);
+          const aiMessage: ChatMessage = {
+            id: (Date.now() + 1).toString(),
+            carId: room.carId,
+            senderId: receiverId,
+            receiverId: user.id,
+            message: defaultResponse,
+            timestamp: new Date().toISOString(),
+            read: false,
+          };
+          setCurrentRoomMessages(prev => [...prev, aiMessage]);
+          scrollToBottom();
+        }, 1000);
+      }
     }
   };
 
-  
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -196,7 +278,6 @@ const ChatPage: React.FC = () => {
     }
   };
 
-  
   const handleSendClick = () => {
     console.log('전송 버튼 클릭됨, 활성 탭:', activeTab);
 
@@ -207,7 +288,6 @@ const ChatPage: React.FC = () => {
     }
   };
 
-  
   const quickQuestions = [
     '차량 가격이 궁금해요',
     '현대 아반떼 정보 알려주세요',
@@ -217,7 +297,6 @@ const ChatPage: React.FC = () => {
     '보험 이전은 어떻게 하나요?',
   ];
 
-  
   const getRoomInfo = (roomId: string) => {
     const room = chatRooms.find(r => r.id === roomId);
     if (!room) return null;
@@ -229,7 +308,6 @@ const ChatPage: React.FC = () => {
     return { room, car, otherUserName };
   };
 
-  
   const isSendDisabled = () => {
     const hasInput = inputValue.trim().length > 0;
 
@@ -351,24 +429,45 @@ const ChatPage: React.FC = () => {
             <div className="bg-white rounded-xl shadow-sm overflow-hidden h-[600px] flex flex-col">
               
               <div className="bg-gradient-to-r from-blue-600 to-emerald-600 text-white p-4">
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-                    {activeTab === 'bot' ? (
-                        <Bot className="w-6 h-6" />
-                    ) : (
-                        <MessageCircle className="w-6 h-6" />
-                    )}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                      {activeTab === 'bot' ? (
+                          <Bot className="w-6 h-6" />
+                      ) : (
+                          <MessageCircle className="w-6 h-6" />
+                      )}
+                    </div>
+                    <div>
+                      <h2 className="font-bold">
+                        {activeTab === 'bot' ? 'AI 상담사' :
+                            selectedRoom ? getRoomInfo(selectedRoom)?.otherUserName : '채팅방을 선택하세요'}
+                      </h2>
+                      <p className="text-sm text-blue-100">
+                        {activeTab === 'bot' ? '언제든 궁금한 점을 물어보세요' :
+                            selectedRoom ? getRoomInfo(selectedRoom)?.car?.title : ''}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="font-bold">
-                      {activeTab === 'bot' ? 'AI 상담사' :
-                          selectedRoom ? getRoomInfo(selectedRoom)?.otherUserName : '채팅방을 선택하세요'}
-                    </h2>
-                    <p className="text-sm text-blue-100">
-                      {activeTab === 'bot' ? '언제든 궁금한 점을 물어보세요' :
-                          selectedRoom ? getRoomInfo(selectedRoom)?.car?.title : ''}
-                    </p>
-                  </div>
+                  
+                  {/* AI 자동 응답 토글 (판매자 채팅 탭에서만 표시) */}
+                  {activeTab === 'seller' && selectedRoom && (
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm text-blue-100">AI 응답</span>
+                      <button
+                        onClick={() => setAiAutoResponse(!aiAutoResponse)}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                          aiAutoResponse ? 'bg-white' : 'bg-white/30'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-blue-600 transition-transform ${
+                            aiAutoResponse ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -428,7 +527,7 @@ const ChatPage: React.FC = () => {
                       )}
                     </>
                 ) : selectedRoom ? ( 
-                    getMessagesByRoom(selectedRoom).map((message) => (
+                    currentRoomMessages.map((message) => (
                         <div
                             key={message.id}
                             className={`flex ${message.senderId === user?.id ? 'justify-end' : 'justify-start'}`}

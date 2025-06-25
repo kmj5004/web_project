@@ -18,8 +18,12 @@ import {
   X
 } from 'lucide-react';
 
+// 커뮤니티 페이지 컴포넌트 - 사용자 간 소통 공간
 const CommunityPage: React.FC = () => {
+  // 인증 훅 사용 (현재 로그인한 사용자 정보)
   const { user } = useAuth();
+  
+  // 커뮤니티 훅 사용 (게시글, 댓글 관리)
   const { 
     posts, 
     comments, 
@@ -32,18 +36,29 @@ const CommunityPage: React.FC = () => {
     getCommentsByPostId 
   } = useCommunity();
 
+  // 선택된 카테고리 상태 관리 (전체, 구매후기, 질문, 팁/노하우, 자유게시판)
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'review' | 'question' | 'tip' | 'general'>('all');
+  
+  // 검색어 상태 관리
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // 새 게시글 작성 모달 표시 상태
   const [showNewPost, setShowNewPost] = useState(false);
+  
+  // 선택된 게시글 상태 (상세보기용)
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  
+  // 새 댓글 입력 상태
   const [newComment, setNewComment] = useState('');
 
+  // 새 게시글 데이터 상태
   const [newPostData, setNewPostData] = useState({
     title: '',
     content: '',
     category: 'general' as const,
   });
 
+  // 카테고리 목록 정의
   const categories = [
     { id: 'all', name: '전체', icon: Filter, color: 'text-gray-600' },
     { id: 'review', name: '구매후기', icon: Star, color: 'text-yellow-600' },
@@ -52,6 +67,7 @@ const CommunityPage: React.FC = () => {
     { id: 'general', name: '자유게시판', icon: MessageCircle, color: 'text-purple-600' },
   ];
 
+  // 카테고리와 검색어에 따라 게시글 필터링
   const filteredPosts = posts.filter(post => {
     const matchesCategory = selectedCategory === 'all' || post.category === selectedCategory;
     const matchesSearch = post.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -59,6 +75,7 @@ const CommunityPage: React.FC = () => {
     return matchesCategory && matchesSearch;
   });
 
+  // 새 게시글 작성 핸들러
   const handleCreatePost = () => {
     if (!user || !newPostData.title.trim() || !newPostData.content.trim()) return;
 
@@ -68,10 +85,12 @@ const CommunityPage: React.FC = () => {
       authorName: user.name,
     });
 
+    // 폼 초기화 및 모달 닫기
     setNewPostData({ title: '', content: '', category: 'general' });
     setShowNewPost(false);
   };
 
+  // 새 댓글 작성 핸들러
   const handleAddComment = () => {
     if (!user || !selectedPost || !newComment.trim()) return;
 
@@ -85,6 +104,7 @@ const CommunityPage: React.FC = () => {
     setNewComment('');
   };
 
+  // 게시글 클릭 핸들러 (상세보기 모달 열기)
   const handlePostClick = (post: Post) => {
     incrementViews(post.id);
     setSelectedPost(post);

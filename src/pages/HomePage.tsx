@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Search, Filter, SlidersHorizontal, Grid, List, Loader2 } from 'lucide-react';
+import { Search, Filter, SlidersHorizontal, Grid, List, Loader2, Star, TrendingUp, Car as CarIcon, MapPin, Calendar, Gauge, Fuel } from 'lucide-react';
 import { useCars } from '../hooks/useCars';
 import CarCard from '../components/CarCard';
 import { Car } from '../types';
@@ -40,6 +40,20 @@ const HomePage: React.FC<HomePageProps> = ({ onCarSelect }) => {
   const brands = [...new Set(allCars.map(car => car.brand))];
 
   const displayedCars = filteredCars.slice(0, 10);
+
+  // 연료 타입 한글 매핑
+  const fuelTypeMap = {
+    gasoline: '가솔린',
+    diesel: '디젤',
+    hybrid: '하이브리드',
+    electric: '전기',
+  };
+
+  // 변속기 타입 한글 매핑
+  const transmissionMap = {
+    manual: '수동',
+    automatic: '자동',
+  };
 
   if (loading) {
     return (
